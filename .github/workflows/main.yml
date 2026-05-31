@@ -1,0 +1,31 @@
+name: Build EditForge Release
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+      - name: Build executable
+        run: pyinstaller --onefile --windowed --name EditForge --add-data "creative_patterns.json;." main.py
+      - name: Package release
+        run: |
+          mkdir EditForge_Portable
+          copy dist\EditForge.exe EditForge_Portable\
+          copy requirements.txt EditForge_Portable\
+          copy creative_patterns.json EditForge_Portable\
+          copy README.md EditForge_Portable\
+          tar -a -c -f EditForge_Portable.zip EditForge_Portable
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EditForge-Windows
+          path: EditForge_Portable.zip
