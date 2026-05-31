@@ -1,0 +1,11 @@
+{
+  "transitions": ["fade", "zoom", "glitch", "slide"],
+  "zoom_curves": [0.92, 1.08, 1.15],
+  "glitch_probability": 0.2,
+  "color_grade": {
+    "saturation": 1.2,
+    "contrast": 1.1,
+    "tint": "#ff5733"
+  },
+  "mask_blend_mode": "ALPHA_INVERTED"
+}
