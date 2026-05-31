@@ -4,6 +4,9 @@ import json
 import subprocess
 import math
 import traceback
+import logging
+import threading
+import requests
 import numpy as np
 from pathlib import Path
 from PyQt6.QtWidgets import (
@@ -14,6 +17,19 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject, QTimer, QRectF
 from PyQt6.QtGui import QColor, QBrush, QPen, QPainter, QFont, QMouseEvent
+
+# ==================== LOGGING & CRASH RECOVERY ====================
+os.makedirs("logs", exist_ok=True)
+logging.basicConfig(
+    filename="logs/app.log",
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+def log_exception(exc_type, exc_value, exc_tb):
+    logging.error("UNHANDLED EXCEPTION", exc_info=(exc_type, exc_value, exc_tb))
+sys.excepthook = log_exception
+logging.info("EditForge v5.0 initialized")
 
 # ==================== CUSTOM BEAT TIMELINE ====================
 class BeatTimeline(QWidget):
@@ -76,36 +92,30 @@ class AnalysisEngine(QObject):
 
     def load_patterns(self, path):
         try:
-            with open(path, "r") as f: patterns = json.load(f)
-            return patterns if "transitions" in patterns else None
+            with open(path, "r") as f: return json.load(f)
         except: return None
 
     def auto_mask_assist(self, clip_paths, out_dir):
         self.progress.emit(5, "🎭 Initializing mask engine...")
         masks_dir = os.path.join(out_dir, "masks")
         os.makedirs(masks_dir, exist_ok=True)
-        
-        # Try YOLOv8-seg, fallback to OpenCV contours
         try:
             from ultralytics import YOLO
             model = YOLO("yolov8n-seg.pt")
-            self.progress.emit(20, "🧠 Loading YOLOv8-seg model...")
+            self.progress.emit(20, "🧠 Loading YOLOv8-seg...")
         except ImportError:
-            self.progress.emit(20, "⚠️ ultralytics not found. Using OpenCV fallback...")
             model = None
+            self.progress.emit(20, "⚠️ ultralytics missing. Using OpenCV fallback...")
 
         for i, path in enumerate(clip_paths):
             if self.cancel_flag: return []
-            self.progress.emit(30 + i*(40/len(clip_paths)), f"Masking {Path(path).name}...")
+            self.progress.emit(30 + i*(40/max(1, len(clip_paths))), f"Masking {Path(path).name}...")
             mask_path = os.path.join(masks_dir, f"mask_{i+1:02d}.png")
             if model:
                 try:
                     res = model(path, conf=0.25, verbose=False)
-                    if res[0].masks is not None:
-                        res[0].save(mask_path)
-                        continue
+                    if res[0].masks is not None: res[0].save(mask_path); continue
                 except: pass
-            # OpenCV fallback: simple foreground extraction
             import cv2
             cap = cv2.VideoCapture(path)
             _, frame = cap.read()
@@ -122,21 +132,18 @@ class AnalysisEngine(QObject):
 
     def render_preview(self, clips, audio, beats, out_dir, patterns):
         self.progress.emit(60, "🎬 Building preview timeline...")
-        import cv2, tempfile
         props = self.get_video_props(clips[0])
         w, h, fps = props["w"], props["h"], props["fps"]
         out_vid = os.path.join(out_dir, "EditForge_Preview.mp4")
-        tmp_dir = tempfile.mkdtemp()
-        
-        # Generate concat list
-        concat = os.path.join(tmp_dir, "concat.txt")
+        tmp_dir = os.path.join(out_dir, "tmp_concat")
+        os.makedirs(tmp_dir, exist_ok=True)
+        concat = os.path.join(tmp_dir, "list.txt")
         with open(concat, "w") as f:
             for i, c in enumerate(clips):
                 f.write(f"file '{c.replace(chr(92), '/')}'\n")
                 if i < len(clips)-1:
                     f.write(f"duration {(beats[i+1]-beats[i]) if i+1<len(beats) else 2.0}\n")
             f.write("outpoint 0\n")
-
         self.progress.emit(75, "⚡ Rendering via ffmpeg...")
         cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat,
                "-i", audio, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
@@ -144,76 +151,52 @@ class AnalysisEngine(QObject):
                "-vf", f"scale={w//2}:{h//2},drawtext=text='EditForge Preview':fontcolor=white:fontsize=24:x=(w-text_w)/2:y=(h-text_h)/2",
                out_vid]
         res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode == 0:
-            self.progress.emit(100, "✅ Preview saved")
-            return out_vid
-        return None
+        return out_vid if res.returncode == 0 else None
 
     def fetch_cc_inspiration(self, query, out_dir):
         self.progress.emit(10, "🌐 Fetching public domain inspiration...")
-        import requests
-        # Using Pexels free API (requires key, fallback to CC0 list)
         headers = {"Authorization": "YOUR_PEXELS_API_KEY_HERE"}
-        url = f"https://api.pexels.com/videos/search?query={query}&per_page=5"
+        url = f"https://api.pexels.com/videos/search?query={query}&per_page=3"
         try:
-            r = requests.get(url, headers=headers)
+            r = requests.get(url, headers=headers, timeout=10)
             if r.status_code == 200:
                 vids = r.json().get("videos", [])
                 out = os.path.join(out_dir, "inspiration")
                 os.makedirs(out, exist_ok=True)
-                for i, v in enumerate(vids[:3]):
+                for i, v in enumerate(vids[:2]):
                     link = v["video_files"][0]["link"]
                     p = os.path.join(out, f"cc_insp_{i+1}.mp4")
-                    with open(p, "wb") as f: f.write(requests.get(link).content)
-                self.progress.emit(40, "✅ Downloaded 3 CC clips")
+                    with open(p, "wb") as f: f.write(requests.get(link, timeout=15).content)
+                self.progress.emit(40, "✅ Downloaded CC clips")
                 return out
-        except: pass
-        self.progress.emit(40, "⚠️ API missing. Add your key to fetch_cc_inspiration()")
+        except Exception as e:
+            logging.warning(f"CC Fetch failed: {e}")
+        self.progress.emit(40, "⚠️ API missing or offline. Add key to fetch_cc_inspiration()")
         return None
 
     def generate_jsx(self, path, audio, clips, beats, offset, props, patterns):
         w, h, fps = props["w"], props["h"], props["fps"]
         dur = beats[-1] + 2.0 if beats else 10.0
-        p = patterns or {"transitions": ["fade", "zoom"], "zoom_curves": [0.9, 1.1], "glitch_prob": 0.15}
-        
-        jsx = f"""// EditForge v4.0 Auto-Generated
+        p = patterns or {"transitions": ["fade", "zoom"], "zoom_curves": [0.9, 1.1]}
+        jsx = f"""// EditForge v5.0 Auto-Generated
 app.beginUndoGroup("EditForge Build");
 var main = app.project.items.addComp("EditForge_MAIN", {w}, {h}, 1.0, {dur}, {fps});
 main.openInViewer();
-
-// Audio & Offset Marker
 var aud = main.layers.add(new File("{audio.replace(chr(92), "/")}"));
 aud.property("Marker").setValueAtTime({offset}, new MarkerValue("Beat Start"));
-
-// Mask Layers
 var masks = app.project.items.addComp("MASKS_REF", {w}, {h}, 1.0, {dur}, {fps});
-for(var m=1; m<={len(clips)}; m++) {{
-    masks.layers.addSolid([0.4, 0.9, 0.4], "Mask_"+m, {w}, {h}, 1.0);
-    masks.layer(m).trackMatteType = TrackMatteType.ALPHA;
-}}
-
-// Creative Engine Injection
-var transType = "{p.get('transitions', ['fade'])[0]}";
-var zoomC = {p.get('zoom_curves', [0.95, 1.05])};
+for(var m=1; m<={len(clips)}; m++) {{ masks.layers.addSolid([0.4, 0.9, 0.4], "Mask_"+m, {w}, {h}, 1.0); masks.layer(m).trackMatteType = TrackMatteType.ALPHA; }}
 """
         for i, clip in enumerate(clips):
             b_start = beats[i] if i < len(beats) else i*1.5
             b_end = beats[i+1] if i+1 < len(beats) else b_start + 1.0
             jsx += f"""
 var c = app.project.items.addComp("CLIP_{i+1:02d}", {w}, {h}, 1.0, {dur}, {fps});
-var ph = c.layers.addSolid([0.15, 0.15, 0.25], "Footage_Placeholder", {w}, {h}, 1.0);
-ph.opacity = 50;
-
+var ph = c.layers.addSolid([0.15, 0.15, 0.25], "Footage_Placeholder", {w}, {h}, 1.0); ph.opacity = 50;
 var mk = c.layers.add(masks.layer({i+1}));
-mk.position.setValue([0,0]);
-
-var s = ph.property("Scale");
-s.setValueAtTime(0, [zoomC[0]*100, zoomC[0]*100]);
-s.setValueAtTime({b_start-b_start}, [zoomC[1]*100, zoomC[1]*100]);
-s.setValueAtTime({b_end-b_start}, [zoomC[0]*100, zoomC[0]*100]);
-
-main.layers.add(c);
-c.startTime = {offset + b_start};
+var s = ph.property("Scale"); s.setValueAtTime(0, [{p['zoom_curves'][0]*100},{p['zoom_curves'][0]*100}]);
+s.setValueAtTime({b_start-b_start}, [{p['zoom_curves'][1]*100},{p['zoom_curves'][1]*100}]);
+main.layers.add(c); c.startTime = {offset + b_start};
 """
         jsx += "\napp.endUndoGroup();\n"
         with open(path, "w", encoding="utf-8") as f: f.write(jsx)
@@ -222,12 +205,10 @@ c.startTime = {offset + b_start};
         try:
             self.progress.emit(0, "🔍 Checking environment...")
             missing = [d for d in ["librosa", "pyscenedetect", "opencv", "ffmpeg"] if not self._check_dep([d, "-version" if d=="ffmpeg" else "--help"])]
-            if missing: self.error.emit(f"Missing: {', '.join(missing)}. Install via pip."); return
-
+            if missing: self.error.emit(f"Missing: {', '.join(missing)}"); return
             props = self.get_video_props(clips[0])
             props["fps"] = float(fps)
             self.progress.emit(10, f"📐 Comp: {props['w']}x{props['h']} @ {props['fps']}fps")
-
             if self.cancel_flag: return
             import librosa
             self.progress.emit(20, "🎵 Loading audio...")
@@ -238,22 +219,19 @@ c.startTime = {offset + b_start};
             bt = librosa.frames_to_time(beats, sr=sr) + s
             bt = [b for b in bt if s <= b <= e]
             self.progress.emit(40, f"🥁 {len(bt)} beats mapped")
-
             patterns = self.load_patterns(pattern_path) if pattern_path else None
-
             if self.cancel_flag: return
             os.makedirs(out, exist_ok=True)
-            jsx = os.path.join(out, "EditForge_v4.jsx")
+            jsx = os.path.join(out, "EditForge_v5.jsx")
             self.generate_jsx(jsx, audio, clips, bt, offset, props, patterns)
             self.progress.emit(70, "✅ .jsx generated")
-
             if self.cancel_flag: return
             preview = self.render_preview(clips, audio, bt, out, patterns)
-            
-            self.progress.emit(100, "✅ Phase 4 complete!")
+            self.progress.emit(100, "✅ Phase 5 complete!")
             self.finished.emit({"jsx": jsx, "preview": preview or "N/A", "beats": len(bt), "comp": f"{props['w']}x{props['h']}"})
         except Exception as ex:
-            self.error.emit(f"Fatal: {str(ex)}\n{traceback.format_exc()}")
+            logging.error(f"Engine run failed: {ex}\n{traceback.format_exc()}")
+            self.error.emit(f"Fatal: {str(ex)}\nCheck logs/app.log for details")
 
 # ==================== THREADING ====================
 class WorkerThread(QThread):
@@ -276,7 +254,8 @@ class WorkerThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("EditForge v4.0 Desktop")
+        self.version = "5.0.0"
+        self.setWindowTitle(f"EditForge v{self.version} Desktop")
         self.resize(1300, 850)
         self.setAcceptDrops(True)
         self.setup_ui()
@@ -284,21 +263,20 @@ class MainWindow(QMainWindow):
         self.audio_path = None
         self.clip_paths = []
         self.worker = None
+        QTimer.singleShot(1500, self.check_updates)
+        logging.info(f"UI initialized | v{self.version}")
 
     def setup_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
         main = QHBoxLayout(central)
         tabs = QTabWidget()
-        
-        # TAB 1: ANALYSIS & EXPORT
         t1 = QWidget()
         lv = QVBoxLayout(t1)
         self.music_lbl = QLabel("Drag & Drop Audio")
         self.music_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.music_lbl.setStyleSheet("padding: 15px; border: 2px dashed #555; border-radius: 8px;")
         lv.addWidget(self.music_lbl)
-        
         trim = QGroupBox("✂️ Trim & Offset")
         tv = QVBoxLayout(trim)
         h1, h2 = QHBoxLayout(), QHBoxLayout()
@@ -309,53 +287,36 @@ class MainWindow(QMainWindow):
         h2.addWidget(self.sp_off)
         tv.addLayout(h1); tv.addLayout(h2)
         lv.addWidget(trim)
-        
         self.timeline = BeatTimeline()
         self.timeline.beatClicked.connect(lambda t: self.sp_off.setValue(t))
         lv.addWidget(self.timeline)
-        
         clips_box = QGroupBox("🎬 Clips")
         self.clips_list = QListWidget()
         self.clips_list.setAcceptDrops(True); self.clips_list.setDragDropMode(QListWidget.DragDropMode.DropOnly)
         self.clips_list.setStyleSheet("background: #1a1a1a; color: #eee; border-radius: 6px;")
         clips_box.setLayout(QVBoxLayout()); clips_box.layout().addWidget(self.clips_list)
         lv.addWidget(clips_box)
-        
         tabs.addTab(t1, "⚡ Analyze & Export")
-        
-        # TAB 2: CREATIVE TOOLS
         t2 = QWidget()
         tv2 = QVBoxLayout(t2)
-        
         masks_box = QGroupBox("🎭 Auto-Mask Assist")
         mv = QVBoxLayout(masks_box)
-        self.mask_btn = QPushButton("Generate Masks from Clips")
-        self.mask_btn.setEnabled(False)
+        self.mask_btn = QPushButton("Generate Masks from Clips"); self.mask_btn.setEnabled(False)
         mv.addWidget(self.mask_btn)
-        self.mask_status = QLabel("Status: Idle")
-        mv.addWidget(self.mask_status)
+        self.mask_status = QLabel("Status: Idle"); mv.addWidget(self.mask_status)
         tv2.addWidget(masks_box)
-        
         patterns_box = QGroupBox("🎨 Creative Patterns")
         pv = QVBoxLayout(patterns_box)
-        self.pat_btn = QPushButton("Upload patterns.json")
-        pv.addWidget(self.pat_btn)
+        self.pat_btn = QPushButton("Upload patterns.json"); pv.addWidget(self.pat_btn)
         pv.addWidget(QLabel("Define transitions, zoom curves, glitch probability in JSON"))
         tv2.addWidget(patterns_box)
-        
         online_box = QGroupBox("🌐 Online Inspiration (CC)")
         ov = QVBoxLayout(online_box)
-        self.online_btn = QPushButton("Fetch Public Domain Clips")
-        ov.addWidget(self.online_btn)
-        self.online_status = QLabel("Status: Offline (Add API key in code)")
-        ov.addWidget(self.online_status)
+        self.online_btn = QPushButton("Fetch Public Domain Clips"); ov.addWidget(self.online_btn)
+        self.online_status = QLabel("Status: Offline (Add API key in code)"); ov.addWidget(self.online_status)
         tv2.addWidget(online_box)
-        
         tabs.addTab(t2, "🛠️ Creative Tools")
-        
         main.addWidget(tabs, 1)
-        
-        # RIGHT PANEL
         right = QWidget()
         rv = QVBoxLayout(right)
         set_box = QGroupBox("⚙️ Settings")
@@ -364,18 +325,15 @@ class MainWindow(QMainWindow):
         sv.addWidget(QLabel("FPS")); sv.addWidget(self.fps_cb)
         sv.addWidget(QLabel("Comp size auto-matches first clip"))
         rv.addWidget(set_box)
-        
         sys_box = QGroupBox("🤖 System")
-        self.sys_lbl = QLabel("Checking deps...")
+        self.sys_lbl = QLabel(f"v{self.version} | Checking deps...")
         sys_box.setLayout(QVBoxLayout()); sys_box.layout().addWidget(self.sys_lbl)
         rv.addWidget(sys_box)
-        
         log_box = QGroupBox("📜 Log")
         self.log = QTextEdit(); self.log.setReadOnly(True); self.log.setMaximumHeight(180)
         self.log.setStyleSheet("background: #0f0f0f; color: #aaffaa; font-family: monospace;")
         log_box.setLayout(QVBoxLayout()); log_box.layout().addWidget(self.log)
         rv.addWidget(log_box)
-        
         act_box = QGroupBox("🚀 Export")
         av = QVBoxLayout(act_box)
         self.gen_btn = QPushButton("⚡ Analyze, Mask & Build")
@@ -387,9 +345,7 @@ class MainWindow(QMainWindow):
         self.progress = QProgressBar()
         av.addWidget(self.progress)
         rv.addWidget(act_box)
-        
         main.addWidget(right, 1)
-        
         self.statusBar = QStatusBar()
         self.setStatusBar(self.statusBar)
         self.gen_btn.clicked.connect(self.start_analysis)
@@ -423,6 +379,7 @@ class MainWindow(QMainWindow):
                 self.clip_paths.append(f)
                 self.clips_list.addItem(f"🎬 {os.path.basename(f)}")
                 self.log.append(f"📂 Clip: {os.path.basename(f)}")
+            logging.info(f"File dropped: {os.path.basename(f)}")
 
     def start_analysis(self):
         if not self.audio_path or not self.clip_paths:
@@ -437,6 +394,7 @@ class MainWindow(QMainWindow):
         self.worker.finished.connect(self.on_done)
         self.worker.error.connect(self.on_err)
         self.worker.start()
+        logging.info("Analysis started")
 
     def on_done(self, d):
         self.progress.setValue(100)
@@ -444,16 +402,19 @@ class MainWindow(QMainWindow):
         self.log.append(f"🎬 Preview: {d['preview']}")
         self.statusBar.showMessage("✅ Ready. Open .jsx in After Effects.")
         self.gen_btn.setEnabled(True); self.cancel_btn.setEnabled(False)
+        logging.info(f"Analysis complete | JSX: {d['jsx']}")
 
     def on_err(self, m):
         self.log.append(f"❌ {m}")
         self.progress.setValue(0)
         self.gen_btn.setEnabled(True); self.cancel_btn.setEnabled(False)
+        logging.error(f"Analysis failed: {m}")
 
     def cancel_analysis(self):
         if self.worker: self.worker.cancel()
         self.log.append("⛔ Cancelled")
         self.cancel_btn.setEnabled(False); self.gen_btn.setEnabled(True)
+        logging.info("Operation cancelled by user")
 
     def start_masking(self):
         if not self.clip_paths: return
@@ -472,6 +433,7 @@ class MainWindow(QMainWindow):
         if f:
             self._pat_path = f
             self.log.append(f"🎨 Loaded: {os.path.basename(f)}")
+            logging.info(f"Pattern loaded: {f}")
 
     def fetch_cc(self):
         out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
@@ -482,8 +444,22 @@ class MainWindow(QMainWindow):
             self.online_status.setText(f"✅ Downloaded to: {p or 'N/A'}")
         QTimer.singleShot(50, run)
 
+    def check_updates(self):
+        try:
+            # 🔑 REPLACE WITH YOUR GITHUB USERNAME & REPO
+            url = "https://api.github.com/repos/YOUR_USERNAME/EditForge/releases/latest"
+            r = requests.get(url, timeout=5)
+            if r.status_code == 200:
+                latest = r.json().get("tag_name", "0.0.0").lstrip("v")
+                if latest > self.version:
+                    QMessageBox.information(self, "Update Available", f"New version v{latest} is ready.\nDownload at:\n{r.json().get('html_url', '#')}")
+                    logging.info(f"Update found: v{latest}")
+        except Exception as e:
+            logging.warning(f"Update check failed: {e}")
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setStyleSheet("QToolTip { color: white; background: #333; }")
     w = MainWindow()
     w.show()
     sys.exit(app.exec())
