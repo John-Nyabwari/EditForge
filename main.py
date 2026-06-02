@@ -352,6 +352,33 @@ class MainWindow(QMainWindow):
         self.log_box.setMaximumHeight(150)
         actions_layout.addWidget(self.log_box)
         right_panel.addWidget(actions_card)
+
+        # --- OUTPUT PANE (Initially Hidden) ---
+        self.output_card = CardWidget("📦 Output & Export")
+        output_layout = QVBoxLayout(self.output_card)
+        
+        self.output_status_lbl = QLabel("✅ Project generated successfully!")
+        self.output_status_lbl.setStyleSheet("color: #06d6a0; font-size: 16px; font-weight: bold;")
+        output_layout.addWidget(self.output_status_lbl)
+        
+        self.output_path_lbl = QLabel("📁 Location: Waiting for analysis...")
+        self.output_path_lbl.setStyleSheet("color: #889; font-size: 12px;")
+        self.output_path_lbl.setWordWrap(True)
+        output_layout.addWidget(self.output_path_lbl)
+        
+        out_btn_layout = QHBoxLayout()
+        self.btn_open_folder = ModernButton("📂 Open Folder", "", "#118ab2")
+        self.btn_open_folder.clicked.connect(self.open_output_folder)
+        out_btn_layout.addWidget(self.btn_open_folder)
+        
+        self.btn_save_as = ModernButton("💾 Save As...", "", "#ffd166")
+        self.btn_save_as.clicked.connect(self.save_jsx_as)
+        out_btn_layout.addWidget(self.btn_save_as)
+        
+        output_layout.addLayout(out_btn_layout)
+        
+        self.output_card.setVisible(False) # Hide until the process finishes
+        right_panel.addWidget(self.output_card)
         
         workspace.addLayout(right_panel)
         cv.addLayout(workspace)
@@ -380,6 +407,7 @@ class MainWindow(QMainWindow):
 
     def dragEnterEvent(self, e):
         if e.mimeData().hasUrls(): e.acceptProposedAction()
+        
     def dropEvent(self, e):
         for u in e.mimeData().urls():
             f = u.toLocalFile()
@@ -409,12 +437,16 @@ class MainWindow(QMainWindow):
         if not self.audio_path or not self.clip_paths:
             QMessageBox.warning(self, "Missing Media", "Please drop an audio file and at least one clip.")
             return
+            
         self.gen_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
         self.log_box.clear()
         self.progress.setValue(0)
         self.log_box.append("🔍 Starting analysis...")
         self.statusBar.showMessage("Processing...")
+        
+        # Hide output card if it was previously visible from a past run
+        self.output_card.setVisible(False)
         
         # Simulate progress for UI demo
         self._simulate_progress()
@@ -436,10 +468,13 @@ class MainWindow(QMainWindow):
                 self.log_box.append(m),
                 self.statusBar.showMessage(m)
             ))
+            
+        # When finished, show the output pane
         QTimer.singleShot(5600, lambda: (
             self.gen_btn.setEnabled(True),
             self.cancel_btn.setEnabled(False),
-            self.statusBar.showMessage("✅ Complete. Open .jsx in After Effects.")
+            self.statusBar.showMessage("✅ Complete. Open .jsx in After Effects."),
+            self.show_output_pane() 
         ))
 
     def cancel_analysis(self):
@@ -448,6 +483,44 @@ class MainWindow(QMainWindow):
         self.gen_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
         self.statusBar.showMessage("Cancelled.")
+
+    def show_output_pane(self):
+        """Called when analysis finishes to show the output pane and create a file."""
+        os.makedirs("output", exist_ok=True)
+        self.output_jsx_path = os.path.abspath("output/EditForge_Project.jsx")
+        
+        # Create a dummy JSX file so it appears in the folder
+        with open(self.output_jsx_path, "w") as f:
+            f.write("// EditForge Generated JSX Script\n// Replace this with actual generation logic\n")
+            
+        self.output_status_lbl.setText("✅ Project generated successfully!")
+        self.output_path_lbl.setText(f"📁 Location: {self.output_jsx_path}")
+        
+        # Show the hidden card
+        self.output_card.setVisible(True)
+        self.log_box.append(f"🎉 Finished! File ready at: {self.output_jsx_path}")
+
+    def open_output_folder(self):
+        """Opens the output folder in Windows Explorer and highlights the file."""
+        if hasattr(self, 'output_jsx_path') and os.path.exists(self.output_jsx_path):
+            # Open folder and highlight the specific file
+            subprocess.Popen(f'explorer /select,"{self.output_jsx_path}"')
+        else:
+            os.startfile(os.path.abspath("output"))
+
+    def save_jsx_as(self):
+        """Allows the user to save the file to a custom location."""
+        if not hasattr(self, 'output_jsx_path'):
+            return
+            
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save JSX File", "EditForge_Project.jsx", "JSX Files (*.jsx);;All Files (*)"
+        )
+        if file_path:
+            import shutil
+            shutil.copy(self.output_jsx_path, file_path)
+            self.log_box.append(f"💾 Saved to: {file_path}")
+            QMessageBox.information(self, "Saved", f"Project saved to:\n{file_path}")
 
     def check_deps(self):
         # Simplified for UI demo
