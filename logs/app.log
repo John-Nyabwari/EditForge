@@ -39,3 +39,39 @@ Traceback (most recent call last):
     painter.setRenderHint(QPainter.Antialiasing)
                           ^^^^^^^^^^^^^^^^^^^^^
 AttributeError: type object 'QPainter' has no attribute 'Antialiasing'
+2026-06-02 14:20:10 | ERROR    | UNHANDLED EXCEPTION
+Traceback (most recent call last):
+  File "C:\Users\Hp\Documents\GitHub\EditForge\main.py", line 50, in paintEvent
+    painter.setRenderHint(QPainter.Antialiasing)
+                          ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: type object 'QPainter' has no attribute 'Antialiasing'
+2026-06-02 14:25:20 | ERROR    | UNHANDLED EXCEPTION
+Traceback (most recent call last):
+  File "C:\Users\Hp\Documents\GitHub\EditForge\main.py", line 50, in paintEvent
+    }}
+    
+AttributeError: type object 'QPainter' has no attribute 'Antialiasing'
+2026-06-02 14:33:03 | ERROR    | UNHANDLED EXCEPTION
+Traceback (most recent call last):
+  File "C:\Users\Hp\Documents\GitHub\EditForge\main.py", line 50, in paintEvent
+    }}
+    
+AttributeError: type object 'QPainter' has no attribute 'Antialiasing'
+2026-06-02 14:33:09 | ERROR    | UNHANDLED EXCEPTION
+Traceback (most recent call last):
+  File "C:\Users\Hp\Documents\GitHub\EditForge\main.py", line 50, in paintEvent
+    }}
+    
+AttributeError: type object 'QPainter' has no attribute 'Antialiasing'
+2026-06-02 14:38:17 | ERROR    | UNHANDLED EXCEPTION
+Traceback (most recent call last):
+  File "C:\Users\Hp\Documents\GitHub\EditForge\main.py", line 50, in paintEvent
+    }}
+    
+AttributeError: type object 'QPainter' has no attribute 'Antialiasing'
+2026-06-02 14:41:04 | ERROR    | UNHANDLED EXCEPTION
+Traceback (most recent call last):
+  File "C:\Users\Hp\Documents\GitHub\EditForge\main.py", line 50, in paintEvent
+    }}
+    
+AttributeError: type object 'QPainter' has no attribute 'Antialiasing'
