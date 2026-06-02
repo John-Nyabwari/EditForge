@@ -1,0 +1,41 @@
+2026-06-02 14:16:06 | INFO     | EditForge v5.0 initialized
+2026-06-02 14:16:09 | INFO     | UI initialized | v5.0.0
+2026-06-02 14:16:10 | ERROR    | UNHANDLED EXCEPTION
+Traceback (most recent call last):
+  File "C:\Users\Hp\Documents\GitHub\EditForge\main.py", line 50, in paintEvent
+    painter.setRenderHint(QPainter.Antialiasing)
+                          ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: type object 'QPainter' has no attribute 'Antialiasing'
+2026-06-02 14:16:29 | INFO     | EditForge v5.0 initialized
+2026-06-02 14:16:31 | INFO     | UI initialized | v5.0.0
+2026-06-02 14:16:31 | ERROR    | UNHANDLED EXCEPTION
+Traceback (most recent call last):
+  File "C:\Users\Hp\Documents\GitHub\EditForge\main.py", line 50, in paintEvent
+    painter.setRenderHint(QPainter.Antialiasing)
+                          ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: type object 'QPainter' has no attribute 'Antialiasing'
+2026-06-02 14:16:37 | ERROR    | UNHANDLED EXCEPTION
+Traceback (most recent call last):
+  File "C:\Users\Hp\Documents\GitHub\EditForge\main.py", line 50, in paintEvent
+    painter.setRenderHint(QPainter.Antialiasing)
+                          ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: type object 'QPainter' has no attribute 'Antialiasing'
+2026-06-02 14:17:01 | INFO     | File dropped: lele_edit.mp3
+2026-06-02 14:17:01 | ERROR    | UNHANDLED EXCEPTION
+Traceback (most recent call last):
+  File "C:\Users\Hp\Documents\GitHub\EditForge\main.py", line 50, in paintEvent
+    painter.setRenderHint(QPainter.Antialiasing)
+                          ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: type object 'QPainter' has no attribute 'Antialiasing'
+2026-06-02 14:17:20 | ERROR    | UNHANDLED EXCEPTION
+Traceback (most recent call last):
+  File "C:\Users\Hp\Documents\GitHub\EditForge\main.py", line 50, in paintEvent
+    painter.setRenderHint(QPainter.Antialiasing)
+                          ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: type object 'QPainter' has no attribute 'Antialiasing'
+2026-06-02 14:17:34 | ERROR    | UNHANDLED EXCEPTION
+Traceback (most recent call last):
+  File "C:\Users\Hp\Documents\GitHub\EditForge\main.py", line 50, in paintEvent
+    painter.setRenderHint(QPainter.Antialiasing)
+                          ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: type object 'QPainter' has no attribute 'Antialiasing'
