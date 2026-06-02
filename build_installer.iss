@@ -7,7 +7,7 @@ OutputDir=installer
 OutputBaseFilename=EditForge_v4_Installer
 Compression=lzma
 SolidCompression=yes
-SetupIconFile=NONE
+SetupIconFile=app.ico
 
 [Files]
 Source: "dist\EditForge.exe"; DestDir: "{app}"; Flags: ignoreversion
