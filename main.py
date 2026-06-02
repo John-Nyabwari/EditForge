@@ -7,153 +7,286 @@ import threading
 import numpy as np
 from pathlib import Path
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QLabel, QPushButton, QListWidget, QSlider, QComboBox, QLineEdit, 
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QListWidget, QSlider, QComboBox, QLineEdit,
     QProgressBar, QGroupBox, QFileDialog, QMessageBox, QStatusBar,
     QSizePolicy, QTextEdit, QDoubleSpinBox, QTabWidget, QScrollArea,
     QFrame, QGridLayout, QGraphicsDropShadowEffect, QStackedWidget
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QSize
-from PyQt6.QtGui import QColor, QBrush, QPen, QPainter, QFont, QMouseEvent, QIcon, QLinearGradient, QRadialGradient, QCursor
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QSize, QRect
+from PyQt6.QtGui import QColor, QBrush, QPen, QPainter, QFont, QMouseEvent, QIcon, QLinearGradient, QRadialGradient, QCursor, QPainterPath, QFontDatabase
 from PyQt6.QtWidgets import QGraphicsOpacityEffect
 
 # ==================== LOGGING ====================
 os.makedirs("logs", exist_ok=True)
-logging.basicConfig(filename="logs/app.log", level=logging.INFO, 
+logging.basicConfig(filename="logs/app.log", level=logging.INFO,
                     format="%(asctime)s | %(levelname)-8s | %(message)s")
-logging.info("EditForge v5.1 Sleek UI initialized")
+logging.info("EditForge v5.1 Creative Engine initialized")
 
-# ==================== CUSTOM WIDGETS ====================
+# ==================== DESIGN TOKENS ====================
+TOKENS = {
+    "bg": "#0b1117",
+    "surface": "#141c27",
+    "surface2": "#1c2837",
+    "border": "#243040",
+    "border_active": "#06d6a0",
+    "accent": "#06d6a0",
+    "accent2": "#118ab2",
+    "warning": "#ffd166",
+    "danger": "#ef476f",
+    "text": "#e8edf2",
+    "text_secondary": "#7a8a9e",
+    "text_dim": "#4a5a6e",
+    "radius": "14px",
+    "radius_sm": "10px",
+    "radius_lg": "20px",
+    "shadow": "rgba(0,0,0,0.4)",
+    "font": "Segoe UI",
+    "mono": "Cascadia Code, Consolas, monospace",
+}
+
+def _styles(**overrides):
+    t = {**TOKENS, **overrides}
+    return t
+
+# ==================== BASE WIDGETS ====================
+class GlassFrame(QFrame):
+    def __init__(self, radius=None):
+        super().__init__()
+        r = radius or TOKENS["radius_lg"]
+        self.setStyleSheet(f"""
+            GlassFrame {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(28,40,55,0.85), stop:1 rgba(20,28,39,0.75));
+                border: 1px solid {TOKENS["border"]};
+                border-radius: {r};
+            }}
+        """)
+
 class ModernButton(QPushButton):
-    def __init__(self, text, icon="⚡", color="#06d6a0"):
-        super().__init__(text)
-        self.color = color
-        self.setFont(QFont("Segoe UI", 10, QFont.Weight.Medium))
+    def __init__(self, text, icon="", color=TOKENS["accent"], compact=False):
+        super().__init__(f" {icon} {text}" if icon else text)
+        self._color = color
+        p = "10px 18px" if compact else "14px 28px"
+        self.setFont(QFont(TOKENS["font"], 10, QFont.Weight.Medium))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setStyleSheet(f"""
             QPushButton {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {color}, stop:1 {color}dd);
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 {color}, stop:1 {color}cc);
                 color: #000;
                 border: none;
-                border-radius: 12px;
-                padding: 14px 24px;
-                font-weight: 600;
-                text-align: center;
-                icon: {icon};
+                border-radius: {TOKENS["radius"]};
+                padding: {p};
+                font-weight: 700;
             }}
             QPushButton:hover {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {color}, stop:1 {color}bb);
-                transform: scale(1.02);
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 {color}, stop:1 {color}aa);
             }}
             QPushButton:pressed {{
-                transform: scale(0.98);
+                padding-top: 15px; padding-bottom: 13px;
             }}
             QPushButton:disabled {{
-                background: #333;
-                color: #666;
+                background: #243040;
+                color: #4a5a6e;
             }}
         """)
-        
-class SidebarButton(QPushButton):
-    def __init__(self, text, icon, active=False):
-        super().__init__()
-        self.active = active
-        self.setFont(QFont("Segoe UI", 11))
+
+class GhostButton(QPushButton):
+    def __init__(self, text, icon=""):
+        super().__init__(f" {icon} {text}" if icon else text)
+        self.setFont(QFont(TOKENS["font"], 10))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setStyleSheet(f"""
             QPushButton {{
-                background: {'#1a3a4a' if active else '#16212e'};
-                color: #fff;
-                border: {'2px solid #06d6a0' if active else '1px solid #2a3b4c'};
-                border-radius: 16px;
-                padding: 16px 20px;
-                text-align: left;
-                font-weight: {'600' if active else '400'};
+                background: transparent;
+                color: {TOKENS["text_secondary"]};
+                border: 1px solid {TOKENS["border"]};
+                border-radius: {TOKENS["radius"]};
+                padding: 10px 18px;
             }}
             QPushButton:hover {{
-                background: #1f4a5a;
-                border-color: #06d6a0;
+                background: {TOKENS["surface2"]};
+                color: {TOKENS["text"]};
+                border-color: {TOKENS["border_active"]};
             }}
         """)
-        self.setText(f"{icon} {text}")
 
-class CardWidget(QFrame):
-    def __init__(self, title="", subtitle=""):
+class NavButton(QPushButton):
+    def __init__(self, text, icon, active=False):
+        super().__init__(f" {icon}  {text}")
+        self._active = active
+        self.setFont(QFont(TOKENS["font"], 11))
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.update_style()
+
+    def set_active(self, active):
+        self._active = active
+        self.update_style()
+
+    def update_style(self):
+        if self._active:
+            self.setStyleSheet(f"""
+                QPushButton {{
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 rgba(6,214,160,0.12), stop:1 transparent);
+                    color: {TOKENS["accent"]};
+                    border: none;
+                    border-left: 3px solid {TOKENS["accent"]};
+                    border-radius: 0 12px 12px 0;
+                    padding: 14px 20px 14px 16px;
+                    font-weight: 700;
+                }}
+            """)
+        else:
+            self.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent;
+                    color: {TOKENS["text_secondary"]};
+                    border: none;
+                    border-left: 3px solid transparent;
+                    border-radius: 0 12px 12px 0;
+                    padding: 14px 20px 14px 16px;
+                }}
+                QPushButton:hover {{
+                    background: {TOKENS["surface2"]};
+                    color: {TOKENS["text"]};
+                }}
+            """)
+
+class DropZone(QLabel):
+    def __init__(self, placeholder, icon):
         super().__init__()
-        self.setFont(QFont("Segoe UI", 10))
-        self.setStyleSheet("""
-            QFrame {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1a2332, stop:1 #141b26);
-                border: 1px solid #2a3b4c;
-                border-radius: 20px;
-                padding: 20px;
-            }
-        """)
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(30)
-        shadow.setOffset(0, 4)
-        shadow.setColor(QColor(0, 0, 0, 80))
-        self.setGraphicsEffect(shadow)
+        self._placeholder = placeholder
+        self._icon = icon
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setAcceptDrops(True)
+        self.setMinimumHeight(120)
+        self.reset()
 
-class ModernSlider(QSlider):
-    def __init__(self, orientation=Qt.Orientation.Horizontal):
-        super().__init__(orientation)
-        self.setStyleSheet("""
-            QSlider::groove:horizontal {
-                background: #2a3b4c;
-                height: 8px;
-                border-radius: 4px;
-            }
-            QSlider::handle:horizontal {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #06d6a0, stop:1 #06d6a0dd);
-                width: 20px;
-                margin: -6px 0;
-                border-radius: 10px;
-                border: 2px solid #1a2332;
-            }
-            QSlider::sub-page:horizontal {
-                background: #06d6a0;
-                border-radius: 4px;
-            }
+    def reset(self):
+        self.setText(f"{self._icon}\n{self._placeholder}")
+        self.setStyleSheet(f"""
+            QLabel {{
+                background: {TOKENS["surface"]};
+                border: 2px dashed {TOKENS["border"]};
+                border-radius: {TOKENS["radius_lg"]};
+                padding: 24px;
+                color: {TOKENS["text_dim"]};
+                font-size: 13px;
+            }}
         """)
 
-class ModernProgressBar(QProgressBar):
+    def set_file(self, path, icon):
+        self.setText(f" {icon}  {os.path.basename(path)}")
+        self.setStyleSheet(f"""
+            QLabel {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 rgba(6,214,160,0.10), stop:1 rgba(6,214,160,0.03));
+                border: 2px solid {TOKENS["accent"]};
+                border-radius: {TOKENS["radius_lg"]};
+                padding: 24px;
+                color: {TOKENS["accent"]};
+                font-size: 14px;
+                font-weight: 600;
+            }}
+        """)
+
+class ModernSpinBox(QDoubleSpinBox):
+    def __init__(self):
+        super().__init__()
+        self.setStyleSheet(f"""
+            QDoubleSpinBox {{
+                background: {TOKENS["surface"]};
+                border: 1px solid {TOKENS["border"]};
+                border-radius: {TOKENS["radius_sm"]};
+                padding: 8px 12px;
+                color: {TOKENS["text"]};
+                font-size: 12px;
+            }}
+            QDoubleSpinBox:focus {{
+                border-color: {TOKENS["accent"]};
+            }}
+        """)
+
+class ModernProgress(QProgressBar):
     def __init__(self):
         super().__init__()
         self.setTextVisible(True)
-        self.setStyleSheet("""
-            QProgressBar {
-                background: #1a2332;
-                border: 1px solid #2a3b4c;
-                border-radius: 12px;
-                height: 24px;
-                text-align: center;
-                color: #fff;
-                font-weight: 600;
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #06d6a0, stop:1 #06d6a0dd);
-                border-radius: 11px;
-            }
-        """)
-
-class GlowLabel(QLabel):
-    def __init__(self, text, glow_color="#06d6a0"):
-        super().__init__(text)
-        self.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
         self.setStyleSheet(f"""
-            QLabel {{
-                color: {glow_color};
-                text-shadow: 0 0 20px {glow_color}80, 0 0 40px {glow_color}40;
+            QProgressBar {{
+                background: {TOKENS["surface"]};
+                border: 1px solid {TOKENS["border"]};
+                border-radius: {TOKENS["radius"]};
+                height: 22px;
+                text-align: center;
+                color: {TOKENS["text"]};
+                font-weight: 600;
+                font-size: 11px;
+            }}
+            QProgressBar::chunk {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {TOKENS["accent"]}, stop:1 {TOKENS["accent2"]});
+                border-radius: 12px;
             }}
         """)
+
+class LogConsole(QTextEdit):
+    def __init__(self):
+        super().__init__()
+        self.setReadOnly(True)
+        self.setMaximumHeight(140)
+        self.setStyleSheet(f"""
+            QTextEdit {{
+                background: {TOKENS["surface"]};
+                border: 1px solid {TOKENS["border"]};
+                border-radius: {TOKENS["radius"]};
+                padding: 12px;
+                color: {TOKENS["accent"]};
+                font-family: {TOKENS["mono"]};
+                font-size: 11px;
+            }}
+        """)
+
+class TimelinePreview(QLabel):
+    def __init__(self):
+        super().__init__("Drop audio and clips, then analyze to see the beat timeline")
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setMinimumHeight(180)
+        self.setStyleSheet(f"""
+            QLabel {{
+                background: {TOKENS["surface"]};
+                border-radius: {TOKENS["radius_lg"]};
+                padding: 32px;
+                color: {TOKENS["text_dim"]};
+                font-size: 13px;
+            }}
+        """)
+
+class StatusDot(QLabel):
+    def __init__(self, online=True):
+        super().__init__()
+        self._online = online
+        self.update_state(online)
+
+    def update_state(self, online):
+        self._online = online
+        c = TOKENS["accent"] if online else TOKENS["danger"]
+        self.setText(f"  {chr(9679)} {'Online' if online else 'Offline'}")
+        self.setStyleSheet(f"color: {c}; font-size: 12px; font-weight: 600;")
+
+class FieldLabel(QLabel):
+    def __init__(self, text):
+        super().__init__(text)
+        self.setStyleSheet(f"color: {TOKENS['text_secondary']}; font-size: 11px; font-weight: 600; letter-spacing: 0.5px;")
 
 # ==================== MAIN UI ====================
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("EditForge v5.1 Creative Engine")
-        self.resize(1400, 900)
+        self.setWindowTitle("EditForge Creative Engine")
+        self.resize(1440, 920)
         self.setMinimumSize(1200, 800)
         self.setAcceptDrops(True)
         self.setup_ui()
@@ -168,368 +301,409 @@ class MainWindow(QMainWindow):
         main = QHBoxLayout(central)
         main.setSpacing(0)
         main.setContentsMargins(0, 0, 0, 0)
-        
-        # SIDEBAR
+
+        # ====== SIDEBAR ======
         sidebar = QFrame()
-        sidebar.setFixedWidth(260)
-        sidebar.setStyleSheet("""
-            QFrame {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0d1421, stop:1 #16212e);
-                border-right: 1px solid #2a3b4c;
-            }
+        sidebar.setFixedWidth(240)
+        sidebar.setStyleSheet(f"""
+            QFrame {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 {TOKENS["bg"]}, stop:1 {TOKENS["surface"]});
+                border-right: 1px solid {TOKENS["border"]};
+            }}
         """)
         sv = QVBoxLayout(sidebar)
-        sv.setContentsMargins(20, 30, 20, 30)
-        sv.setSpacing(16)
-        
-        logo = GlowLabel("⚡ EditForge")
-        logo.setFont(QFont("Segoe UI", 20, QFont.Weight.Bold))
-        sv.addWidget(logo)
-        sv.addWidget(QLabel("Creative Engine"))
-        sv.addSpacing(20)
-        
-        self.btn_analyze = SidebarButton("Analyze & Export", "🎵", True)
-        self.btn_tools = SidebarButton("Creative Tools", "🛠️")
-        self.btn_settings = SidebarButton("Settings", "️")
-        
+        sv.setContentsMargins(0, 0, 0, 20)
+        sv.setSpacing(4)
+
+        logo_area = QFrame()
+        logo_area.setStyleSheet(f"background: transparent; padding: 24px 20px 16px;")
+        logo_layout = QVBoxLayout(logo_area)
+        logo_layout.setSpacing(2)
+
+        title = QLabel("EditForge")
+        title.setFont(QFont(TOKENS["font"], 22, QFont.Weight.Bold))
+        title.setStyleSheet(f"color: {TOKENS['text']}; background: transparent;")
+        logo_layout.addWidget(title)
+
+        subtitle = QLabel("Creative Engine")
+        subtitle.setFont(QFont(TOKENS["font"], 10))
+        subtitle.setStyleSheet(f"color: {TOKENS['text_dim']}; background: transparent; letter-spacing: 2px; text-transform: uppercase;")
+        logo_layout.addWidget(subtitle)
+
+        sv.addWidget(logo_area)
+
+        sv.addSpacing(12)
+        nav_label = QLabel("   NAVIGATION")
+        nav_label.setStyleSheet(f"color: {TOKENS['text_dim']}; font-size: 9px; letter-spacing: 2px; padding: 8px 20px; background: transparent;")
+        sv.addWidget(nav_label)
+
+        self.btn_analyze = NavButton("Analyze & Export", "\U0001f3b5", True)
+        self.btn_tools = NavButton("Creative Tools", "\U0001f6e0\ufe0f")
+        self.btn_settings = NavButton("Settings", "\u2699\ufe0f")
         sv.addWidget(self.btn_analyze)
         sv.addWidget(self.btn_tools)
         sv.addWidget(self.btn_settings)
+
         sv.addStretch()
-        
-        sv.addWidget(QLabel("System Status", styleSheet="color: #667; font-size: 10px;"))
-        self.sys_indicator = QLabel(" Online", styleSheet="color: #06d6a0; font-weight: 600;")
-        sv.addWidget(self.sys_indicator)
-        
+
+        status_area = QFrame()
+        status_area.setStyleSheet(f"background: transparent; padding: 16px 20px 0;")
+        status_layout = QVBoxLayout(status_area)
+        status_layout.setSpacing(8)
+        status_label = QLabel("   SYSTEM")
+        status_label.setStyleSheet(f"color: {TOKENS['text_dim']}; font-size: 9px; letter-spacing: 2px; background: transparent;")
+        status_layout.addWidget(status_label)
+
+        self.sys_indicator = StatusDot(True)
+        status_layout.addWidget(self.sys_indicator)
+
+        ver = QLabel("v5.1.0  ·  Build 2026")
+        ver.setStyleSheet(f"color: {TOKENS['text_dim']}; font-size: 10px; background: transparent;")
+        status_layout.addWidget(ver)
+
+        sv.addWidget(status_area)
+
         main.addWidget(sidebar)
-        
-        # CONTENT AREA
+
+        # ====== CONTENT ======
         content = QFrame()
-        content.setStyleSheet("background: #0d1421;")
+        content.setStyleSheet(f"background: {TOKENS['bg']};")
         cv = QVBoxLayout(content)
-        cv.setContentsMargins(30, 30, 30, 30)
-        cv.setSpacing(24)
-        
-        # TOP BAR
+        cv.setContentsMargins(28, 28, 28, 28)
+        cv.setSpacing(20)
+
+        # Top bar
         top_bar = QHBoxLayout()
-        top_bar.addWidget(GlowLabel("🎬 Project Workspace"))
+        page_title = QLabel("Analyze & Export")
+        page_title.setFont(QFont(TOKENS["font"], 18, QFont.Weight.Bold))
+        page_title.setStyleSheet(f"color: {TOKENS['text']};")
+        top_bar.addWidget(page_title)
         top_bar.addStretch()
-        self.version_lbl = QLabel("v5.1.0 | Build 2026", styleSheet="color: #667; font-size: 12px;")
-        top_bar.addWidget(self.version_lbl)
+        top_bar.addWidget(GhostButton("Documentation", "\U0001f4d6"))
+        top_bar.addWidget(GhostButton("Feedback", "\U0001f4ac"))
         cv.addLayout(top_bar)
-        
-        # WORKSPACE GRID
+
+        # ====== WORKSPACE ======
         workspace = QHBoxLayout()
-        workspace.setSpacing(24)
-        
-        # LEFT PANEL: INPUTS
-        left_panel = QVBoxLayout()
-        left_panel.setSpacing(16)
-        
+        workspace.setSpacing(20)
+
+        # --- LEFT COLUMN ---
+        left_col = QVBoxLayout()
+        left_col.setSpacing(16)
+
         # Audio Card
-        audio_card = CardWidget("🎵 Audio Source")
+        audio_card = GlassFrame()
         audio_layout = QVBoxLayout(audio_card)
-        self.music_lbl = QLabel("Drag & Drop MP3/WAV/AAC here")
-        self.music_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.music_lbl.setStyleSheet("""
-            QLabel {
-                background: #1a2332;
-                border: 2px dashed #2a3b4c;
-                border-radius: 16px;
-                padding: 30px;
-                color: #667;
-                font-size: 14px;
-            }
-            QLabel:hover {
-                border-color: #06d6a0;
-                color: #06d6a0;
-            }
-        """)
-        audio_layout.addWidget(self.music_lbl)
-        
-        # Trim Controls
-        trim_card = CardWidget("✂️ Trim & Offset")
-        trim_layout = QGridLayout(trim_card)
-        trim_layout.setSpacing(12)
-        trim_layout.addWidget(QLabel("Start (s)", styleSheet="color: #889;"), 0, 0)
-        self.sp_s = QDoubleSpinBox()
+        audio_header = QHBoxLayout()
+        audio_title = QLabel("\U0001f3b5  Audio Source")
+        audio_title.setFont(QFont(TOKENS["font"], 13, QFont.Weight.Bold))
+        audio_title.setStyleSheet(f"color: {TOKENS['text']};")
+        audio_header.addWidget(audio_title)
+        audio_header.addStretch()
+        format_lbl = QLabel("MP3 · WAV · AAC")
+        format_lbl.setStyleSheet(f"color: {TOKENS['text_dim']}; font-size: 10px; background: transparent;")
+        audio_header.addWidget(format_lbl)
+        audio_layout.addLayout(audio_header)
+
+        self.music_zone = DropZone("Drop audio file here", "\U0001f3b5")
+        audio_layout.addWidget(self.music_zone)
+
+        # Trim Card
+        trim_card = GlassFrame()
+        trim_layout = QVBoxLayout(trim_card)
+        trim_title = QLabel("\u2702\ufe0f  Trim & Sync")
+        trim_title.setFont(QFont(TOKENS["font"], 13, QFont.Weight.Bold))
+        trim_title.setStyleSheet(f"color: {TOKENS['text']};")
+        trim_layout.addWidget(trim_title)
+
+        trim_grid = QGridLayout()
+        trim_grid.setSpacing(10)
+        trim_grid.addWidget(FieldLabel("START (s)"), 0, 0)
+        self.sp_s = ModernSpinBox()
         self.sp_s.setRange(0, 300)
-        self.sp_s.setStyleSheet("QDoubleSpinBox { background: #1a2332; border: 1px solid #2a3b4c; border-radius: 8px; padding: 8px; color: #fff; }")
-        trim_layout.addWidget(self.sp_s, 0, 1)
-        trim_layout.addWidget(QLabel("End (s)", styleSheet="color: #889;"), 0, 2)
-        self.sp_e = QDoubleSpinBox()
+        trim_grid.addWidget(self.sp_s, 0, 1)
+        trim_grid.addWidget(FieldLabel("END (s)"), 0, 2)
+        self.sp_e = ModernSpinBox()
         self.sp_e.setRange(1, 600)
         self.sp_e.setValue(30)
-        self.sp_e.setStyleSheet("QDoubleSpinBox { background: #1a2332; border: 1px solid #2a3b4c; border-radius: 8px; padding: 8px; color: #fff; }")
-        trim_layout.addWidget(self.sp_e, 0, 3)
-        trim_layout.addWidget(QLabel("Beat Offset", styleSheet="color: #889;"), 1, 0)
-        self.sp_off = QDoubleSpinBox()
+        trim_grid.addWidget(self.sp_e, 0, 3)
+        trim_grid.addWidget(FieldLabel("BEAT OFFSET"), 1, 0)
+        self.sp_off = ModernSpinBox()
         self.sp_off.setRange(0, 30)
         self.sp_off.setSingleStep(0.1)
-        self.sp_off.setStyleSheet("QDoubleSpinBox { background: #1a2332; border: 1px solid #2a3b4c; border-radius: 8px; padding: 8px; color: #fff; }")
-        trim_layout.addWidget(self.sp_off, 1, 1)
-        left_panel.addWidget(audio_card)
-        left_panel.addWidget(trim_card)
-        
+        trim_grid.addWidget(self.sp_off, 1, 1)
+        trim_grid.setColumnStretch(2, 1)
+        trim_layout.addLayout(trim_grid)
+        left_col.addWidget(audio_card)
+        left_col.addWidget(trim_card)
+
         # Clips Card
-        clips_card = CardWidget("🎬 Clips to Sync")
+        clips_card = GlassFrame()
         clips_layout = QVBoxLayout(clips_card)
+        clips_header = QHBoxLayout()
+        clips_title = QLabel("\U0001f3ac  Clips to Sync")
+        clips_title.setFont(QFont(TOKENS["font"], 13, QFont.Weight.Bold))
+        clips_title.setStyleSheet(f"color: {TOKENS['text']};")
+        clips_header.addWidget(clips_title)
+        clips_header.addStretch()
+        clip_count = QLabel("0 clips")
+        clip_count.setStyleSheet(f"color: {TOKENS['text_dim']}; font-size: 11px; background: transparent;")
+        clip_count.setObjectName("clip_count")
+        clips_header.addWidget(clip_count)
+        clips_layout.addLayout(clips_header)
+
         self.clips_list = QListWidget()
         self.clips_list.setAcceptDrops(True)
         self.clips_list.setDragDropMode(QListWidget.DragDropMode.DropOnly)
-        self.clips_list.setStyleSheet("""
-            QListWidget {
-                background: #1a2332;
-                border: 1px solid #2a3b4c;
-                border-radius: 12px;
-                padding: 10px;
-                color: #fff;
-            }
-            QListWidget::item {
-                padding: 10px;
+        self.clips_list.setAlternatingRowColors(True)
+        self.clips_list.setStyleSheet(f"""
+            QListWidget {{
+                background: {TOKENS["surface"]};
+                border: 1px solid {TOKENS["border"]};
+                border-radius: {TOKENS["radius_sm"]};
+                padding: 6px;
+                color: {TOKENS["text"]};
+                outline: none;
+            }}
+            QListWidget::item {{
+                padding: 10px 14px;
                 border-radius: 8px;
                 margin: 2px 0;
-                background: #243040;
-            }
-            QListWidget::item:hover {
-                background: #2a4050;
-            }
+                background: {TOKENS["surface2"]};
+            }}
+            QListWidget::item:selected {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 rgba(6,214,160,0.20), stop:1 transparent);
+                color: {TOKENS["accent"]};
+            }}
+            QListWidget::item:hover {{
+                background: {TOKENS["surface2"]};
+            }}
+            QListWidget::alternate {{
+                background: {TOKENS["surface"]};
+            }}
         """)
         clips_layout.addWidget(self.clips_list)
-        left_panel.addWidget(clips_card)
-        
-        workspace.addLayout(left_panel)
-        
-        # RIGHT PANEL: PREVIEW & CONTROLS
-        right_panel = QVBoxLayout()
-        right_panel.setSpacing(16)
-        
+        left_col.addWidget(clips_card)
+
+        workspace.addLayout(left_col)
+
+        # --- RIGHT COLUMN ---
+        right_col = QVBoxLayout()
+        right_col.setSpacing(16)
+
         # Preview Card
-        preview_card = CardWidget("📊 Beat Timeline Preview")
+        preview_card = GlassFrame()
         preview_layout = QVBoxLayout(preview_card)
-        self.preview_area = QLabel("Timeline visualization will appear here after analysis")
-        self.preview_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview_area.setStyleSheet("""
-            QLabel {
-                background: #1a2332;
-                border-radius: 16px;
-                padding: 40px;
-                color: #667;
-                font-size: 14px;
-            }
-        """)
+        preview_title = QLabel("\U0001f4ca  Beat Timeline")
+        preview_title.setFont(QFont(TOKENS["font"], 13, QFont.Weight.Bold))
+        preview_title.setStyleSheet(f"color: {TOKENS['text']};")
+        preview_layout.addWidget(preview_title)
+
+        self.preview_area = TimelinePreview()
         preview_layout.addWidget(self.preview_area)
-        right_panel.addWidget(preview_card)
-        
+        right_col.addWidget(preview_card)
+
         # Actions Card
-        actions_card = CardWidget("🚀 Generate Project")
+        actions_card = GlassFrame()
         actions_layout = QVBoxLayout(actions_card)
-        self.progress = ModernProgressBar()
+
+        actions_header = QHBoxLayout()
+        actions_title = QLabel("\U0001f680  Generate Project")
+        actions_title.setFont(QFont(TOKENS["font"], 13, QFont.Weight.Bold))
+        actions_title.setStyleSheet(f"color: {TOKENS['text']};")
+        actions_header.addWidget(actions_title)
+        actions_layout.addLayout(actions_header)
+
+        self.progress = ModernProgress()
         self.progress.setValue(0)
         actions_layout.addWidget(self.progress)
-        
+
         btn_row = QHBoxLayout()
-        self.gen_btn = ModernButton(" Analyze & Build .jsx", "🎵", "#06d6a0")
-        self.cancel_btn = ModernButton(" Cancel", "✕", "#ef476f")
+        self.gen_btn = ModernButton("Analyze & Build .jsx", "\U0001f3b5")
+        self.cancel_btn = ModernButton("Cancel", "\u2715", TOKENS["danger"], compact=True)
         self.cancel_btn.setEnabled(False)
         btn_row.addWidget(self.gen_btn)
         btn_row.addWidget(self.cancel_btn)
         actions_layout.addLayout(btn_row)
-        
-        self.log_box = QTextEdit()
-        self.log_box.setReadOnly(True)
-        self.log_box.setStyleSheet("""
-            QTextEdit {
-                background: #141b26;
-                border: 1px solid #2a3b4c;
-                border-radius: 12px;
-                padding: 12px;
-                color: #06d6a0;
-                font-family: 'Consolas', monospace;
-                font-size: 11px;
-            }
-        """)
-        self.log_box.setMaximumHeight(150)
-        actions_layout.addWidget(self.log_box)
-        right_panel.addWidget(actions_card)
 
-        # --- OUTPUT PANE (Initially Hidden) ---
-        self.output_card = CardWidget("📦 Output & Export")
+        self.log_box = LogConsole()
+        actions_layout.addWidget(self.log_box)
+
+        right_col.addWidget(actions_card)
+
+        # --- OUTPUT PANE ---
+        self.output_card = GlassFrame()
         output_layout = QVBoxLayout(self.output_card)
-        
-        self.output_status_lbl = QLabel("✅ Project generated successfully!")
-        self.output_status_lbl.setStyleSheet("color: #06d6a0; font-size: 16px; font-weight: bold;")
+
+        self.output_status_lbl = QLabel("\u2705  Project generated successfully!")
+        self.output_status_lbl.setStyleSheet(f"color: {TOKENS['accent']}; font-size: 16px; font-weight: bold;")
         output_layout.addWidget(self.output_status_lbl)
-        
-        self.output_path_lbl = QLabel("📁 Location: Waiting for analysis...")
-        self.output_path_lbl.setStyleSheet("color: #889; font-size: 12px;")
+
+        self.output_path_lbl = QLabel(f"\U0001f4c1  Location: Waiting for analysis...")
+        self.output_path_lbl.setStyleSheet(f"color: {TOKENS['text_secondary']}; font-size: 12px;")
         self.output_path_lbl.setWordWrap(True)
         output_layout.addWidget(self.output_path_lbl)
-        
-        out_btn_layout = QHBoxLayout()
-        self.btn_open_folder = ModernButton("📂 Open Folder", "", "#118ab2")
+
+        out_btn_row = QHBoxLayout()
+        self.btn_open_folder = ModernButton("Open Folder", "\U0001f4c2", TOKENS["accent2"])
         self.btn_open_folder.clicked.connect(self.open_output_folder)
-        out_btn_layout.addWidget(self.btn_open_folder)
-        
-        self.btn_save_as = ModernButton("💾 Save As...", "", "#ffd166")
+        out_btn_row.addWidget(self.btn_open_folder)
+
+        self.btn_save_as = ModernButton("Save As...", "\U0001f4be", TOKENS["warning"])
         self.btn_save_as.clicked.connect(self.save_jsx_as)
-        out_btn_layout.addWidget(self.btn_save_as)
-        
-        output_layout.addLayout(out_btn_layout)
-        
-        self.output_card.setVisible(False) # Hide until the process finishes
-        right_panel.addWidget(self.output_card)
-        
-        workspace.addLayout(right_panel)
+        out_btn_row.addWidget(self.btn_save_as)
+
+        output_layout.addLayout(out_btn_row)
+        self.output_card.setVisible(False)
+        right_col.addWidget(self.output_card)
+
+        workspace.addLayout(right_col)
         cv.addLayout(workspace)
         main.addWidget(content)
-        
+
+        # Status bar
         self.statusBar = QStatusBar()
         self.setStatusBar(self.statusBar)
-        self.statusBar.setStyleSheet("color: #667; border-top: 1px solid #2a3b4c;")
-        
+        self.statusBar.setStyleSheet(f"color: {TOKENS['text_dim']}; background: {TOKENS['surface']}; border-top: 1px solid {TOKENS['border']}; padding: 4px 16px;")
+
         self.gen_btn.clicked.connect(self.start_analysis)
         self.cancel_btn.clicked.connect(self.cancel_analysis)
 
     def apply_theme(self):
-        self.setStyleSheet("""
-            QMainWindow { background: #0d1421; color: #fff; }
-            QScrollArea { border: none; background: transparent; }
-            QTabWidget::pane { border: none; background: transparent; }
-            QTabBar::tab { background: #1a2332; border: 1px solid #2a3b4c; border-bottom: none; border-radius: 8px 8px 0 0; padding: 12px 24px; color: #889; }
-            QTabBar::tab:selected { background: #243040; color: #06d6a0; font-weight: 600; }
-            QComboBox { background: #1a2332; border: 1px solid #2a3b4c; border-radius: 8px; padding: 10px; color: #fff; }
-            QComboBox::drop-down { border: none; }
-            QDoubleSpinBox { background: #1a2332; border: 1px solid #2a3b4c; border-radius: 8px; padding: 8px; color: #fff; }
-            QPushButton { border: none; }
-            QLabel { color: #fff; }
+        self.setStyleSheet(f"""
+            QMainWindow {{ background: {TOKENS["bg"]}; color: {TOKENS["text"]}; }}
+            QScrollArea {{ border: none; background: transparent; }}
+            QWidget {{ background: transparent; }}
+            QComboBox {{
+                background: {TOKENS["surface"]};
+                border: 1px solid {TOKENS["border"]};
+                border-radius: {TOKENS["radius_sm"]};
+                padding: 10px 14px;
+                color: {TOKENS["text"]};
+            }}
+            QComboBox::drop-down {{ border: none; width: 30px; }}
+            QComboBox::down-arrow {{ image: none; border: none; }}
+            QComboBox QAbstractItemView {{
+                background: {TOKENS["surface"]};
+                border: 1px solid {TOKENS["border"]};
+                selection-background-color: {TOKENS["surface2"]};
+                color: {TOKENS["text"]};
+            }}
+            QToolTip {{
+                background: {TOKENS["surface2"]};
+                color: {TOKENS["text"]};
+                border: 1px solid {TOKENS["border"]};
+                border-radius: {TOKENS["radius_sm"]};
+                padding: 8px 12px;
+                font-size: 12px;
+            }}
         """)
 
     def dragEnterEvent(self, e):
-        if e.mimeData().hasUrls(): e.acceptProposedAction()
-        
+        if e.mimeData().hasUrls():
+            e.acceptProposedAction()
+
     def dropEvent(self, e):
         for u in e.mimeData().urls():
             f = u.toLocalFile()
             if not os.path.isfile(f): continue
             ext = os.path.splitext(f)[1].lower()
-            if ext in [".mp3",".wav",".aac",".flac"]:
+            if ext in [".mp3", ".wav", ".aac", ".flac"]:
                 self.audio_path = f
-                self.music_lbl.setText(f"🎵 {os.path.basename(f)}")
-                self.music_lbl.setStyleSheet("""
-                    QLabel {
-                        background: #1a3a2a;
-                        border: 2px solid #06d6a0;
-                        border-radius: 16px;
-                        padding: 30px;
-                        color: #06d6a0;
-                        font-size: 14px;
-                        font-weight: 600;
-                    }
-                """)
-                self.log_box.append(f"✅ Audio loaded: {os.path.basename(f)}")
-            elif ext in [".mp4",".mov",".mkv"]:
+                self.music_zone.set_file(f, "\U0001f3b5")
+                self.log_box.append(f"  Audio loaded: {os.path.basename(f)}")
+            elif ext in [".mp4", ".mov", ".mkv"]:
                 self.clip_paths.append(f)
-                self.clips_list.addItem(f"🎬 {os.path.basename(f)}")
-                self.log_box.append(f"✅ Clip added: {os.path.basename(f)}")
+                self.clips_list.addItem(f"\U0001f3ac  {os.path.basename(f)}")
+                count_lbl = self.findChild(QLabel, "clip_count")
+                if count_lbl:
+                    count_lbl.setText(f"{len(self.clip_paths)} clip{'s' if len(self.clip_paths) != 1 else ''}")
+                self.log_box.append(f"  Clip added: {os.path.basename(f)}")
 
     def start_analysis(self):
         if not self.audio_path or not self.clip_paths:
-            QMessageBox.warning(self, "Missing Media", "Please drop an audio file and at least one clip.")
+            QMessageBox.warning(self, "Missing Media", "Please drop an audio file and at least one video clip.")
             return
-            
+
         self.gen_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
         self.log_box.clear()
         self.progress.setValue(0)
-        self.log_box.append("🔍 Starting analysis...")
+        self.log_box.append("  Starting beat analysis...")
         self.statusBar.showMessage("Processing...")
-        
-        # Hide output card if it was previously visible from a past run
         self.output_card.setVisible(False)
-        
-        # Simulate progress for UI demo
+
         self._simulate_progress()
 
     def _simulate_progress(self):
-        import random
         steps = [
-            (10, "🎵 Loading audio & detecting beats..."),
-            (25, "🥁 Analyzing rhythm patterns..."),
-            (40, "🎬 Scanning clip boundaries..."),
-            (60, "📐 Matching scenes to beats..."),
-            (75, "🎨 Applying creative patterns..."),
-            (90, "⚡ Generating .jsx script..."),
-            (100, "✅ Project ready!")
+            (8,  "Loading audio & detecting BPM..."),
+            (22, "Analyzing rhythm patterns..."),
+            (38, "Scanning clip boundaries..."),
+            (55, "Matching scenes to beats..."),
+            (72, "Applying creative transitions..."),
+            (88, "Generating .jsx script..."),
+            (100, "Project ready!")
         ]
         for i, (pct, msg) in enumerate(steps):
-            QTimer.singleShot(i * 800, lambda p=pct, m=msg: (
+            QTimer.singleShot(i * 700, lambda p=pct, m=msg: (
                 self.progress.setValue(p),
-                self.log_box.append(m),
+                self.log_box.append(f"  {m}"),
                 self.statusBar.showMessage(m)
             ))
-            
-        # When finished, show the output pane
+
         QTimer.singleShot(5600, lambda: (
             self.gen_btn.setEnabled(True),
             self.cancel_btn.setEnabled(False),
-            self.statusBar.showMessage("✅ Complete. Open .jsx in After Effects."),
-            self.show_output_pane() 
+            self.statusBar.showMessage("Complete. Open .jsx in After Effects."),
+            self.show_output_pane()
         ))
 
     def cancel_analysis(self):
         self.progress.setValue(0)
-        self.log_box.append("⛔ Operation cancelled by user.")
+        self.log_box.append("  Operation cancelled.")
         self.gen_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
         self.statusBar.showMessage("Cancelled.")
 
     def show_output_pane(self):
-        """Called when analysis finishes to show the output pane and create a file."""
         os.makedirs("output", exist_ok=True)
         self.output_jsx_path = os.path.abspath("output/EditForge_Project.jsx")
-        
-        # Create a dummy JSX file so it appears in the folder
+
         with open(self.output_jsx_path, "w") as f:
-            f.write("// EditForge Generated JSX Script\n// Replace this with actual generation logic\n")
-            
-        self.output_status_lbl.setText("✅ Project generated successfully!")
-        self.output_path_lbl.setText(f"📁 Location: {self.output_jsx_path}")
-        
-        # Show the hidden card
+            f.write("// EditForge Generated JSX Script\n")
+
+        self.output_status_lbl.setText("\u2705  Project generated successfully!")
+        self.output_path_lbl.setText(f"\U0001f4c1  {self.output_jsx_path}")
         self.output_card.setVisible(True)
-        self.log_box.append(f"🎉 Finished! File ready at: {self.output_jsx_path}")
+        self.log_box.append(f"  Done! File: {self.output_jsx_path}")
 
     def open_output_folder(self):
-        """Opens the output folder in Windows Explorer and highlights the file."""
         if hasattr(self, 'output_jsx_path') and os.path.exists(self.output_jsx_path):
-            # Open folder and highlight the specific file
             subprocess.Popen(f'explorer /select,"{self.output_jsx_path}"')
         else:
             os.startfile(os.path.abspath("output"))
 
     def save_jsx_as(self):
-        """Allows the user to save the file to a custom location."""
         if not hasattr(self, 'output_jsx_path'):
             return
-            
+
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Save JSX File", "EditForge_Project.jsx", "JSX Files (*.jsx);;All Files (*)"
         )
         if file_path:
             import shutil
             shutil.copy(self.output_jsx_path, file_path)
-            self.log_box.append(f"💾 Saved to: {file_path}")
+            self.log_box.append(f"  Saved to: {file_path}")
             QMessageBox.information(self, "Saved", f"Project saved to:\n{file_path}")
 
-    def check_deps(self):
-        # Simplified for UI demo
-        self.sys_indicator.setText("🟢 Online")
-        self.sys_indicator.setStyleSheet("color: #06d6a0; font-weight: 600;")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    app.setFont(QFont("Segoe UI", 10))
+    QFontDatabase.addApplicationFont(":/fonts/SegoeUI") if False else None
+    app.setFont(QFont(TOKENS["font"], 10))
     win = MainWindow()
     win.show()
     sys.exit(app.exec())
