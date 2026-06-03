@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+logs/
+build/
+dist/
+*.spec
+
+# Node/Agentic
+node_modules/
+bun.lock
+.env
+.DS_Store
+
+# OS
+Thumbs.db
+.vscode/
+.idea/
